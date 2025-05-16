@@ -9,68 +9,132 @@ from langchain_core.prompts import ChatPromptTemplate
 load_dotenv()
 cohere_api_key = os.getenv("COHERE_API")
 
+contractions = { 
+"ain't": "is not",
+"aren't": "are not",
+"can't": "cannot",
+"can't've": "cannot have",
+"'cause": "because",
+"could've": "could have",
+"couldn't": "could not",
+"couldn't've": "could not have",
+"didn't": "did not",
+"doesn't": "does not",
+"don't": "do not",
+"hadn't": "had not",
+"hadn't've": "had not have",
+"hasn't": "has not",
+"haven't": "have not",
+"he'd": "he would",
+"he'd've": "he would have",
+"he'll": "he will",
+"he'll've": "he will have",
+"he's": "he is",
+"how'd": "how did",
+"how'd'y": "how do you",
+"how'll": "how will",
+"how's": "how is",
+"I'd": "I would",
+"I'd've": "I would have",
+"I'll": "I will",
+"I'll've": "I will have",
+"I'm": "I am",
+"I've": "I have",
+"isn't": "is not",
+"it'd": "it would",
+"it'd've": "it would have",
+"it'll": "it will",
+"it'll've": "it will have",
+"it's": "it is",
+"let's": "let us",
+"ma'am": "madam",
+"mayn't": "may not",
+"might've": "might have",
+"mightn't": "might not",
+"mightn't've": "might not have",
+"must've": "must have",
+"mustn't": "must not",
+"mustn't've": "must not have",
+"needn't": "need not",
+"needn't've": "need not have",
+"o'clock": "of the clock",
+"oughtn't": "ought not",
+"oughtn't've": "ought not have",
+"shan't": "shall not",
+"sha'n't": "shall not",
+"shan't've": "shall not have",
+"she'd": "she would",
+"she'd've": "she would have",
+"she'll": "she will",
+"she'll've": "she will have",
+"she's": "she is",
+"should've": "should have",
+"shouldn't": "should not",
+"shouldn't've": "should not have",
+"so've": "so have",
+"so's": "so is",
+"that'd": "that would",
+"that'd've": "that would have",
+"that's": "that is",
+"there'd": "there would",
+"there'd've": "there would have",
+"there's": "there is",
+"they'd": "they would",
+"they'd've": "they would have",
+"they'll": "they will",
+"they'll've": "they will have",
+"they're": "they are",
+"they've": "they have",
+"to've": "to have",
+"wasn't": "was not",
+"we'd": "we would",
+"we'd've": "we would have",
+"we'll": "we will",
+"we'll've": "we will have",
+"we're": "we are",
+"we've": "we have",
+"weren't": "were not",
+"what'll": "what will",
+"what'll've": "what will have",
+"what're": "what are",
+"what's": "what is",
+"what've": "what have",
+"when's": "when is",
+"when've": "when have",
+"where'd": "where did",
+"where's": "where is",
+"where've": "where have",
+"who'll": "who will",
+"who'll've": "who will have",
+"who's": "who is",
+"who've": "who have",
+"why's": "why is",
+"why've": "why have",
+"will've": "will have",
+"won't": "will not",
+"won't've": "will not have",
+"would've": "would have",
+"wouldn't": "would not",
+"wouldn't've": "would not have",
+"y'all": "you all",
+"y'all'd": "you all would",
+"y'all'd've": "you all would have",
+"y'all're": "you all are",
+"y'all've": "you all have",
+"you'd": "you would",
+"you'd've": "you would have",
+"you'll": "you will",
+"you'll've": "you will have",
+"you're": "you are",
+"you've": "you have"
+}
+
 def pdf_to_text(pdf_path):
-    """
-    Extracts raw text from a PDF using pymupdf4llm, preserving page breaks as '-----'.
-    """
     raw_text = pymupdf4llm.to_markdown(pdf_path)
-    return raw_text
-
-def clean_pagewise(text):
-    """
-    Cleans text:
-    1. Removes footnotes (numbers stuck to capital letters) ONLY right before page breaks.
-    2. Merges broken sentences across page breaks.
-    """
-    pages = text.split('-----')  # Split text by page breaks
-    cleaned_pages = []
-
-    for i, page in enumerate(pages):
-        lines = page.strip().split('\n')
-
-        # Step 1: Remove footnote at the end if it matches (number jammed to Capital letter)
-        if lines:
-            last_line = lines[-1].strip()
-            if re.match(r'^\d+[A-Z]', last_line):  # e.g., "2This follows..."
-                lines = lines[:-1]  # Drop the last line (footnote)
-                print(f"Removed footnote from page {i}")
-
-        cleaned_pages.append('\n'.join(lines))
-
-    # Step 2: Merge sentences split across page breaks
-    final_pages = []
-    for i in range(len(cleaned_pages) - 1):
-        current_page = cleaned_pages[i].rstrip()
-        next_page = cleaned_pages[i + 1].lstrip()
-
-        if current_page:
-            last_char = current_page[-1]
-            # If page ends without sentence-ending punctuation
-            if last_char not in '.!?':
-                # And next page starts with lowercase or mid-sentence looking
-                if next_page and next_page[0].islower():
-                    print(f"Merging sentence across page {i} and {i+1}")
-                    merged = current_page + " " + next_page
-                    cleaned_pages[i + 1] = merged
-                    final_pages.append('')  # Current page gets merged into next
-                else:
-                    final_pages.append(current_page)
-            else:
-                final_pages.append(current_page)
-
-    # Last page
-    final_pages.append(cleaned_pages[-1])
-
-    # Filter out empty merged pages
-    final_pages = [page for page in final_pages if page.strip() != '']
-
-    # Recombine pages
-    return '\n\n-----\n\n'.join(final_pages)
+    return remove_contractions(raw_text.lower())
 
 def format_text(raw_text):
-    """
-    Sends text to Cohere for strict formatting while preserving all alphanumeric characters.
-    """
+
     prompt = ChatPromptTemplate.from_template("""
     You are a strict text formatting assistant specializing in cleaning up messy PDF extractions.
 
@@ -106,59 +170,41 @@ def format_text(raw_text):
 
     ---
 
-    Here is the raw text:
+        Here is the raw text:
 
-    {raw_text}
-    """)
+        {raw_text}
+        """)
 
     llm = ChatCohere(
         model="command-a-03-2025", 
         temperature=0, 
-        api_key=cohere_api_key
-    )
+        api_key=cohere_api_key)
 
     chain = prompt | llm
 
     formatted_text = chain.invoke({
-        "raw_text": raw_text
+        "raw_text" : raw_text
     }).content
     return formatted_text
 
+def remove_contractions(text):
+    pattern = re.compile(r'\b(' + '|'.join(re.escape(k) for k in contractions) + r')\b')
+    return pattern.sub(lambda match: contractions[match.group(0)], text)
+
 def remove_non_alphanumeric(text):
-    """
-    Removes all non-alphanumeric characters for comparison.
-    """
     return re.sub(r'[^A-Za-z0-9]', '', text)
 
 def is_alphanumeric_equivalent(text1, text2):
-    """
-    Checks if two texts have the same alphanumeric sequence.
-    """
-    cleaned1 = remove_non_alphanumeric(text1)
-    cleaned2 = remove_non_alphanumeric(text2)
-    print("RAW TEXT:")
-    print(cleaned1)
-    print("FORMATTED TEXT:")
-    print(cleaned2)
-    return cleaned1 == cleaned2
+    return remove_non_alphanumeric(text1) == remove_non_alphanumeric(text2)
 
-def main():
-    pdf_path = "../ToolsAndJewels.pdf"  # <-- Update path if needed
-    raw_text = pdf_to_text(pdf_path)
 
-    # Smarter cleaning before formatting
-    cleaned_raw_text = clean_pagewise(raw_text)
-
-    formatted_text = format_text(cleaned_raw_text)
-
-    attempt = 1
-    while not is_alphanumeric_equivalent(cleaned_raw_text, formatted_text):
-        print(f"Formatting failed on attempt {attempt}, retrying...")
-        formatted_text = format_text(cleaned_raw_text)
-        attempt += 1
-
-    print("Final formatted text:")
-    print(formatted_text)
+def parse_text():
+    pdf_path = "../ToolsAndJewels.pdf"
+    raw_text = re.sub(r'(\w)\n', r'\1 ', pdf_to_text(pdf_path))
+    formatted_text = format_text(raw_text)
+    # while(not is_alphanumeric_equivalent(raw_text, formatted_text)):
+    #     formatted_text = format_text(raw_text)
+    return formatted_text
 
 if __name__ == '__main__':
-    main()
+    print(parse_text())

@@ -1,10 +1,9 @@
 cohere
 python-dotenv
-pdfplumber
 langchain
 langchain_cohere
 flask
 flask-cors
-re
 pymupdf
 pymupdf4llm
+numpy
